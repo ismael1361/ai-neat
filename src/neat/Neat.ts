@@ -382,7 +382,7 @@ export default class Neat {
 				c.setScore(score);
 			}
 			neat.evolve();
-			// neat.printSpecies();
+			//neat.printSpecies();
 		}
 
 		// for (const c of neat.clients.values()) {
