@@ -1,0 +1,74 @@
+{
+	"name": "ai-neat",
+	"version": "1.0.0",
+	"description": "O AI-NEAT é um algoritmo de aprendizado de máquina usado em redes neurais artificiais e é conhecido por sua capacidade de evoluir arquiteturas de redes neurais. Ele é especialmente útil em tarefas de otimização, como evoluir arquiteturas de redes neurais para resolver problemas específicos.",
+	"comments": {
+		"browser": "Consulte README.md para obter mais informações sobre AI-NEAT para webpack/browserify",
+		"exports": "Consulte README.md para obter mais informações sobre AI-NEAT"
+	},
+	"main": "dist/cjs/index.js",
+	"module": "./dist/esm/index.js",
+	"types": "./dist/types/index.d.ts",
+	"files": [
+		"dist/"
+	],
+	"private": false,
+	"repository": "github:ismael1361/ai-neat",
+	"scripts": {
+		"dev": "nodemon ./demo",
+		"build": "npm run build:clean && npm run build:esm && npm run build:cjs && npm run build:packages && npm run browserify && echo Done!",
+		"build:clean": "rimraf dist",
+		"build:esm": "tsc -p tsconfig-esm.json && npx tsc-esm-fix ---target='dist/esm'",
+		"build:cjs": "tsc -p tsconfig-cjs.json",
+		"build:packages": "bash ./create-package-files",
+		"browserify": "webpack --config webpack.config.js && terser dist/browser.js -o dist/browser.min.js",
+		"npm:publish": "npm run build && npm pack && npm publish --access public && echo published!",
+		"test": "mocha"
+	},
+	"keywords": [
+		"ai-neat",
+		"ai",
+		"neat",
+		"neural",
+		"network",
+		"neural network",
+		"neural networks",
+		"neural network library",
+		"neural network libraries"
+	],
+	"author": "ISMAEL1361 <ismael1361@gmail.com> (https://github.com/ismael1361)",
+	"license": "MIT",
+	"bugs": {
+		"url": "https://github.com/ismael1361/ai-neat/issues"
+	},
+	"homepage": "https://github.com/ismael1361/ai-neat#readme",
+	"devDependencies": {
+		"@types/node": "^18.17.11",
+		"@typescript-eslint/eslint-plugin": "^6.2.1",
+		"@typescript-eslint/parser": "^6.2.1",
+		"ejs": "^3.1.8",
+		"eslint": "^8.46.0",
+		"esm": "^3.2.25",
+		"mocha": "^10.2.0",
+		"nodemon": "^3.0.1",
+		"rimraf": "^5.0.1",
+		"terser": "^5.19.4",
+		"ts-node": "^10.9.1",
+		"tsc-esm-fix": "^2.20.14",
+		"tsconfig-paths": "^4.1.2",
+		"typescript": "^5.0.2",
+		"webpack": "^5.61.0",
+		"webpack-cli": "^5.1.4"
+	},
+	"nodemonConfig": {
+		"restartable": "rs",
+		"ignore": [],
+		"watch": [
+			"src",
+			"test"
+		],
+		"delay": 2500,
+		"exec": "node --loader ts-node/esm",
+		"ext": "js,ts"
+	}
+}
