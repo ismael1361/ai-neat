@@ -1,152 +1,85 @@
-import Client from "./Client";
+import { RandomHashSet } from "../data_structures";
 import { Genome } from "../genome";
+import Client from "./Client";
 
-/**
- * Class representing a species in the NEAT algorithm.
- */
 export default class Species {
-	/**
-	 * The set of clients belonging to the species.
-	 * @type {Set<Client>}
-	 * @private
-	 */
-	private clients: Set<Client> = new Set();
+	private _clients: RandomHashSet<Client> = new RandomHashSet<Client>();
+	private _representative: Client;
+	private _score: number = 0;
 
-	/**
-	 * The representative client of the species.
-	 * @type {Client}
-	 * @private
-	 */
-	private representative: Client;
-
-	/**
-	 * The score of the species.
-	 * @type {number}
-	 * @private
-	 */
-	private score: number = 0;
-
-	/**
-	 * Create a species with a representative client.
-	 * @param {Client} representative - The representative client for the species.
-	 */
 	constructor(representative: Client) {
-		this.representative = representative;
-		this.representative.setSpecies(this);
-		this.clients.add(representative);
+		this._representative = representative;
+		this._representative.species = this;
+		this._clients.add(this._representative);
 	}
 
-	/**
-	 * Add a client to the species if it is within the compatibility threshold.
-	 * @param {Client} client - The client to add to the species.
-	 * @returns {boolean} - `true` if the client was added, `false` otherwise.
-	 */
-	public put(client: Client): boolean {
-		if (client.distance(this.representative) < this.representative.getGenome().getNeat().CP) {
-			client.setSpecies(this);
-			this.clients.add(client);
+	put(client: Client): boolean {
+		if (client.distance(this._representative) < this._representative.genome.neat.CP) {
+			client.species = this;
+			this._clients.add(client);
 			return true;
 		}
 		return false;
 	}
 
-	/**
-	 * Forcefully add a client to the species.
-	 * @param {Client} client - The client to add to the species.
-	 */
-	public forcePut(client: Client): void {
-		client.setSpecies(this);
-		this.clients.add(client);
+	forcePut(client: Client): void {
+		client.species = this;
+		this._clients.add(client);
 	}
 
-	/**
-	 * Mark the species as extinct, removing all clients.
-	 */
-	public goExtinct(): void {
-		for (const c of this.clients) {
-			c.setSpecies(null);
+	goExtinct(): void {
+		for (const client of this._clients.getData()) {
+			client.species = undefined;
 		}
 	}
 
-	/**
-	 * Evaluate the average score of the species.
-	 */
-	public evaluateScore(): void {
-		let totalScore = 0;
-		for (const c of this.clients) {
-			totalScore += c.getScore();
+	evaluate(): void {
+		this._score = 0;
+		for (const client of this._clients.getData()) {
+			this._score += client.score;
 		}
-		this.score = totalScore / this.clients.size;
+		this._score /= this._clients.size;
 	}
 
-	/**
-	 * Reset the species by selecting a new representative client.
-	 */
-	public reset(): void {
-		this.representative = this.clients.values().next().value;
-		for (const c of this.clients) {
-			c.setSpecies(null);
+	reset(): void {
+		this._representative = this._clients.random_element() as Client;
+		for (const client of this._clients.getData()) {
+			client.species = undefined;
 		}
-		this.clients.clear();
-		this.clients.add(this.representative);
-		this.representative.setSpecies(this);
-		this.score = 0;
+		this._clients.clear();
+		this._representative.species = this;
+		this._clients.add(this._representative);
+		this._score = 0;
 	}
 
-	/**
-	 * Kill a certain percentage of the worst-performing clients in the species.
-	 * @param {number} percentage - The percentage of clients to kill.
-	 */
-	public kill(percentage: number): void {
-		const sortedClients = Array.from(this.clients).sort((a, b) => a.getScore() - b.getScore());
+	kill(percentage: number): void {
+		this._clients.getData().sort((a, b) => a.score - b.score);
+
 		const amount = percentage * this.clients.size;
 
 		for (let i = 0; i < amount; i++) {
-			sortedClients[i].setSpecies(null);
-			this.clients.delete(sortedClients[i]);
+			(this._clients.get(0) as Client).species = undefined;
+			this._clients.remove(this._clients.get(0) as Client);
 		}
 	}
 
-	/**
-	 * Breed two clients from the species to create a new genome.
-	 * @returns {Genome} - The offspring genome.
-	 */
-	public breed(): Genome {
-		const c1 = Array.from(this.clients)[Math.floor(Math.random() * this.clients.size)];
-		const c2 = Array.from(this.clients)[Math.floor(Math.random() * this.clients.size)];
+	breed(): Genome {
+		const parent1: Client = this._clients.random_element() as Client;
+		const parent2: Client = this._clients.random_element() as Client;
 
-		return c1.getScore() > c2.getScore() ? Genome.crossOver(c1.getGenome(), c2.getGenome()) : Genome.crossOver(c2.getGenome(), c1.getGenome());
+		if (parent1.score > parent2.score) return Genome.crossover(parent1.genome, parent2.genome);
+		return Genome.crossover(parent2.genome, parent1.genome);
 	}
 
-	/**
-	 * Get the size (number of clients) of the species.
-	 * @returns {number} - The size of the species.
-	 */
 	get size(): number {
-		return this.clients.size;
+		return this._clients.size;
 	}
 
-	/**
-	 * Get the set of clients belonging to the species.
-	 * @returns {Set<Client>} - The set of clients.
-	 */
-	public getClients(): Set<Client> {
-		return this.clients;
+	get clients(): RandomHashSet<Client> {
+		return this._clients;
 	}
 
-	/**
-	 * Get the representative client of the species.
-	 * @returns {Client} - The representative client.
-	 */
-	public getRepresentative(): Client {
-		return this.representative;
-	}
-
-	/**
-	 * Get the score of the species.
-	 * @returns {number} - The score of the species.
-	 */
-	public getScore(): number {
-		return this.score;
+	get score(): number {
+		return this._score;
 	}
 }

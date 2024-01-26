@@ -1,404 +1,269 @@
-import { RandomSelector } from "../data_structures";
-import ConnectionGene from "../genome/ConnectionGene";
-import Genome from "../genome/Genome";
-import NodeGene from "../genome/NodeGene";
+import { RandomHashSet, RandomSelector } from "../data_structures";
+import { ConnectionGene, Genome, NodeGene } from "../genome";
 import Client from "./Client";
 import Species from "./Species";
 
-/**
- * Class representing the NEAT (NeuroEvolution of Augmenting Topologies) algorithm.
- */
 export default class Neat {
-	/**
-	 * The maximum number of nodes.
-	 * @type {number}
-	 */
-	public static MAX_NODES: number = Math.pow(2, 20);
+	static MAX_NODES: number = Math.pow(2, 16);
 
-	/**
-	 * Coefficient for adjusting disjoint genes in the distance calculation.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly C1: number = 1;
+	private all_connections: Map<number, ConnectionGene> = new Map<number, ConnectionGene>();
+	private all_nodes: RandomHashSet<NodeGene> = new RandomHashSet<NodeGene>();
 
-	/**
-	 * Coefficient for adjusting excess genes in the distance calculation.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly C2: number = 1;
+	private input_size: number;
+	private output_size: number;
+	private max_population_size: number;
 
-	/**
-	 * Coefficient for adjusting the average weight differences in the distance calculation.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly C3: number = 1;
+	public WEIGHT_SHIFT_STRENGTH: number = 0.3;
+	public WEIGHT_RANDOM_STRENGTH: number = 1;
 
-	/**
-	 * Threshold for speciation in the genetic algorithm.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly CP: number = 4;
+	public SURVIVORS: number = 0.4;
 
-	/**
-	 * Strength of weight shift mutation.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly WEIGHT_SHIFT_STRENGTH: number = 0.3;
+	public PROBABILITY_MUTATE_LINK: number = 0.01;
+	public PROBABILITY_MUTATE_NODE: number = 0.01;
+	public PROBABILITY_MUTATE_WEIGHT_SHIFT: number = 0.2;
+	public PROBABILITY_MUTATE_WEIGHT_RANDOM: number = 0.02;
+	public PROBABILITY_MUTATE_TOGGLE_LINK: number = 0.1;
 
-	/**
-	 * Strength of weight random mutation.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly WEIGHT_RANDOM_STRENGTH: number = 1;
+	public coefficients: {
+		c1: number;
+		c2: number;
+		c3: number;
+	} = {
+		c1: 1,
+		c2: 1,
+		c3: 1,
+	};
 
-	/**
-	 * Percentage of top-performing genomes to survive to the next generation.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly SURVIVORS: number = 0.8;
+	public CP: number = 20;
 
-	/**
-	 * Probability of mutating a link (connection) in the genetic algorithm.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly PROBABILITY_MUTATE_LINK: number = 0.01;
+	private _clients: RandomHashSet<Client> = new RandomHashSet<Client>();
+	private _species: RandomHashSet<Species> = new RandomHashSet<Species>();
 
-	/**
-	 * Probability of mutating a node in the genetic algorithm.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly PROBABILITY_MUTATE_NODE: number = 0.1;
-
-	/**
-	 * Probability of mutating the weight shift in the genetic algorithm.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly PROBABILITY_MUTATE_WEIGHT_SHIFT: number = 0.02;
-
-	/**
-	 * Probability of mutating the weight randomly in the genetic algorithm.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly PROBABILITY_MUTATE_WEIGHT_RANDOM: number = 0.02;
-
-	/**
-	 * Probability of toggling a link (connection) in the genetic algorithm.
-	 * @type {number}
-	 * @readonly
-	 */
-	readonly PROBABILITY_MUTATE_TOGGLE_LINK: number = 0;
-
-	/**
-	 * Map of all connections in the NEAT algorithm.
-	 * @type {Map<ConnectionGene, ConnectionGene>}
-	 * @private
-	 */
-	private all_connections: Map<ConnectionGene, ConnectionGene> = new Map();
-
-	/**
-	 * Set of all nodes in the NEAT algorithm.
-	 * @type {Set<NodeGene>}
-	 * @private
-	 */
-	private all_nodes: Set<NodeGene> = new Set();
-
-	/**
-	 * Set of all clients in the NEAT algorithm.
-	 * @type {Set<Client>}
-	 * @private
-	 */
-	private clients: Set<Client> = new Set();
-
-	/**
-	 * Set of all species in the NEAT algorithm.
-	 * @type {Set<Species>}
-	 * @private
-	 */
-	private species: Set<Species> = new Set();
-
-	/**
-	 * Maximum number of clients in the NEAT algorithm.
-	 * @type {number}
-	 * @private
-	 */
-	private max_clients: number = 100;
-
-	/**
-	 * Number of output nodes in the NEAT algorithm.
-	 * @type {number}
-	 * @private
-	 */
-	private output_size: number = 0;
-
-	/**
-	 * Number of input nodes in the NEAT algorithm.
-	 * @type {number}
-	 * @private
-	 */
-	private input_size: number = 0;
-
-	/**
-	 * Create a NEAT instance.
-	 * @param {number} input_size - The number of input nodes.
-	 * @param {number} output_size - The number of output nodes.
-	 * @param {number} clients - The number of clients.
-	 */
-	constructor(input_size: number, output_size: number, clients: number) {
-		this.reset(input_size, output_size, clients);
+	constructor(input_size: number, output_size: number, population_size: number = 100) {
+		this.input_size = input_size;
+		this.output_size = output_size;
+		this.max_population_size = population_size;
+		this.reset(input_size, output_size, population_size);
 	}
 
-	/**
-	 * Generate an empty genome.
-	 * @returns {Genome} - The generated genome.
-	 */
-	public emptyGenome(): Genome {
+	empty_genome(): Genome {
 		const g: Genome = new Genome(this);
 		for (let i = 0; i < this.input_size + this.output_size; i++) {
-			const x = i < this.input_size ? 0.1 : 0.9;
-			const y = (i + 1) / ((i < this.input_size ? this.input_size : this.output_size) + 1);
-			g.getNodes().add(this.getNode(x, y, i + 1));
+			const n = this.getNode(i + 1);
+			g.nodes.add(n);
 		}
 		return g;
 	}
 
-	/**
-	 * Reset NEAT with new parameters.
-	 * @param {number} input_size - The number of input nodes.
-	 * @param {number} output_size - The number of output nodes.
-	 * @param {number} clients - The number of clients.
-	 */
-	public reset(input_size: number, output_size: number, clients: number): void {
+	reset(input_size: number, output_size: number, population_size: number = 100): void {
 		this.input_size = input_size;
 		this.output_size = output_size;
-		this.max_clients = clients;
+		this.max_population_size = population_size;
 
 		this.all_connections.clear();
 		this.all_nodes.clear();
-		this.clients.clear();
+		this._clients.clear();
 
 		for (let i = 0; i < input_size; i++) {
-			this.getNode(0.1, (i + 1) / (input_size + 1));
+			const n = this.getNode();
+			n.x = 0.1;
+			n.y = (i + 1) / (input_size + 1);
 		}
 
 		for (let i = 0; i < output_size; i++) {
-			this.getNode(0.9, (i + 1) / (output_size + 1));
+			const n = this.getNode();
+			n.x = 0.9;
+			n.y = (i + 1) / (output_size + 1);
 		}
 
-		for (let i = 0; i < this.max_clients; i++) {
-			const c: Client = new Client(this.emptyGenome());
+		for (let i = 0; i < population_size; i++) {
+			const c = new Client(this.empty_genome());
+			c.mutate();
 			c.generateCalculator();
-			this.clients.add(c);
+			this._clients.add(c);
 		}
 	}
 
-	/**
-	 * Get a client by index.
-	 * @param {number} index - The index of the client.
-	 * @returns {Client | undefined} - The client object.
-	 */
-	public getClient(index: number): Client | undefined {
-		const clientsArray: Client[] = Array.from(this.clients);
-		return clientsArray[index];
+	getClient(index?: number): Client | null {
+		return typeof index === "number" ? this._clients.get(index) : this._clients.data.sort((a, b) => b.score - a.score)[0];
 	}
 
-	/**
-	 * Creates a new ConnectionGene instance based on an existing one.
-	 * @param {ConnectionGene} con - The existing connection gene.
-	 * @returns {ConnectionGene} A new connection gene instance.
-	 */
-	public static getConnection(con: ConnectionGene): ConnectionGene {
-		const c: ConnectionGene = new ConnectionGene(con.getFrom(), con.getTo());
-		c.setInnovation_number(con.getInnovation_number());
-		c.setWeight(con.getWeight());
-		c.setEnabled(con.isEnabled());
+	static getConnection(con: ConnectionGene) {
+		const c: ConnectionGene = new ConnectionGene(con.innovation, con.from, con.to);
+		c.weight = con.weight;
+		c.isEnabled = con.isEnabled;
 		return c;
 	}
 
-	/**
-	 * Gets or creates a connection gene between two nodes.
-	 * @param {NodeGene} node1 - The first node.
-	 * @param {NodeGene} node2 - The second node.
-	 * @returns {ConnectionGene} The connection gene between the nodes.
-	 */
-	public getConnection(node1: NodeGene, node2: NodeGene): ConnectionGene {
-		const connectionGene: ConnectionGene = new ConnectionGene(node1, node2);
+	containsConnection(con: ConnectionGene): boolean {
+		for (let c of this.all_connections.values()) {
+			if (c.equals(con)) {
+				return true;
+			}
+		}
 
-		if (this.all_connections.has(connectionGene)) {
-			connectionGene.setInnovation_number((this.all_connections.get(connectionGene) as ConnectionGene).getInnovation_number());
+		return false;
+	}
+
+	getConnection(node1: NodeGene, node2: NodeGene): ConnectionGene {
+		const connectionGene: ConnectionGene = new ConnectionGene(this.all_connections.size + 1, node1, node2);
+
+		if (this.all_connections.has(connectionGene.hashCode)) {
+			connectionGene.innovation = this.all_connections.get(connectionGene.hashCode)!.innovation;
 		} else {
-			connectionGene.setInnovation_number(this.all_connections.size + 1);
-			this.all_connections.set(connectionGene, connectionGene);
+			this.all_connections.set(connectionGene.hashCode, connectionGene);
 		}
 
 		return connectionGene;
 	}
 
-	/**
-	 * Sets the replacement index for a connection gene between two nodes.
-	 * @param {NodeGene} node1 - The first node.
-	 * @param {NodeGene} node2 - The second node.
-	 * @param {number} index - The replacement index to be set.
-	 */
-	public setReplaceIndex(node1: NodeGene, node2: NodeGene, index: number): void {
-		this.all_connections.get(new ConnectionGene(node1, node2))?.setReplaceIndex(index);
+	getNode(id?: number): NodeGene {
+		if (typeof id === "number" && id <= this.all_nodes.size) {
+			return this.all_nodes.get(id - 1) as NodeGene;
+		}
+
+		const n = new NodeGene(this.all_nodes.size + 1, 0, 0);
+		this.all_nodes.add(n);
+		return n;
 	}
 
-	/**
-	 * Gets the replacement index for a connection gene between two nodes.
-	 * @param {NodeGene} node1 - The first node.
-	 * @param {NodeGene} node2 - The second node.
-	 * @returns {number} The replacement index, or 0 if not found.
-	 */
-	public getReplaceIndex(node1: NodeGene, node2: NodeGene): number {
-		const con: ConnectionGene = new ConnectionGene(node1, node2);
-		const data: ConnectionGene | undefined = this.all_connections.get(con);
-		if (!data) return 0;
-		return data.getReplaceIndex();
-	}
-
-	public getNode(x: number | null, y: number | null, innovation_number?: number): NodeGene {
-		const node: NodeGene = new NodeGene(innovation_number || this.all_nodes.size + 1);
-		node.setX(x ?? undefined);
-		node.setY(y ?? undefined);
-		this.all_nodes.add(node);
-		return node;
-	}
-
-	/**
-	 * Evolve the NEAT algorithm by generating species, removing weak individuals, reproducing, mutating, and regenerating calculators.
-	 */
-	public evolve(): void {
-		this.generateSpecies();
+	evolve(): void {
+		this.genSpecies();
 		this.kill();
 		this.removeExtinctSpecies();
 		this.reproduce();
 		this.mutate();
-		for (const c of this.clients.values()) {
-			c.generateCalculator();
+		for (const client of this._clients.getData()) {
+			client.generateCalculator();
 		}
 	}
 
-	/**
-	 * Print information about each species, including its score and size.
-	 */
-	public printSpecies(): void {
-		console.log("##########################################");
-		for (const s of this.species.values()) {
-			console.log(`${s}  ${s.getScore()}  ${s.size}`);
+	genSpecies(): void {
+		for (let s of this._species.getData()) {
+			s.reset();
+		}
+
+		for (const client of this._clients.getData()) {
+			if (client.species !== undefined && client.species !== null) {
+				continue;
+			}
+			let found = false;
+			for (const species of this._species.getData()) {
+				if (species.put(client)) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				this._species.add(new Species(client));
+			}
+		}
+
+		for (const species of this._species.getData()) {
+			species.evaluate();
 		}
 	}
 
-	private reproduce(): void {
+	kill(): void {
+		for (const species of this._species.getData()) {
+			species.kill(1 - this.SURVIVORS);
+		}
+	}
+
+	removeExtinctSpecies(): void {
+		for (let i = this._species.size - 1; i >= 0; i--) {
+			if ((this._species.get(i) as Species).size <= 1) {
+				(this._species.get(i) as Species).goExtinct();
+				this._species.remove(i);
+			}
+		}
+	}
+
+	reproduce(): void {
 		const selector: RandomSelector<Species> = new RandomSelector<Species>();
-		for (const s of this.species.values()) {
-			selector.add(s, s.getScore());
+
+		for (const species of this._species.getData()) {
+			selector.add(species, species.score);
 		}
 
-		for (const c of this.clients.values()) {
-			if (c.getSpecies() === null) {
-				const s: Species | null = selector.random();
-				if (s instanceof Species) {
-					c.setGenome(s.breed());
+		for (let c of this._clients.getData()) {
+			if (!c.species) {
+				const s = selector.random() || undefined;
+				if (s) {
+					c.species = s;
+					c.genome = s.breed();
 					s.forcePut(c);
 				}
 			}
 		}
 	}
 
-	/**
-	 * Perform mutation on each client in the NEAT algorithm.
-	 */
-	public mutate(): void {
-		for (const c of this.clients.values()) {
-			c.mutate();
+	mutate(): void {
+		for (const client of this._clients.getData()) {
+			client.mutate();
 		}
 	}
 
-	private removeExtinctSpecies(): void {
-		for (let i = this.species.size - 1; i >= 0; i--) {
-			if (this.species[i].size <= 1) {
-				this.species[i].goExtinct();
-				this.species.delete(this.species[i]);
-			}
+	printSpeacies(): void {
+		console.log("##########################################");
+		let i = 0;
+		for (const s of this._species.getData()) {
+			const minNodes = s.clients
+				.getData()
+				.reduce((min, c) => (c.genome.nodes.size === 0 ? min : Math.min(min, c.genome.nodes.size)), s.clients.getData().find((c) => c.genome.nodes.size > 0)?.genome.nodes.size || 0);
+			const maxNodes = s.clients.getData().reduce((max, c) => Math.max(max, c.genome.nodes.size), 0);
+
+			const minConnections = s.clients
+				.getData()
+				.reduce(
+					(min, c) => (c.genome.connections.size === 0 ? min : Math.min(min, c.genome.connections.size)),
+					s.clients.getData().find((c) => c.genome.connections.size > 0)?.genome.connections.size || 0,
+				);
+			const maxConnections = s.clients.getData().reduce((max, c) => Math.max(max, c.genome.connections.size), 0);
+
+			console.log(`[${i}]-> ${s.score} ${s.size} ${minNodes}-${maxNodes} ${minConnections}-${maxConnections}`);
+			i++;
 		}
 	}
 
-	private generateSpecies(): void {
-		for (const s of this.species.values()) {
-			s.reset();
-		}
+	train(inputs: number[][], outputs: number[][], iterations: number = 100): void {
+		for (let i = 0; i < iterations; i++) {
+			for (let c of this._clients.getData()) {
+				let mae = 0;
 
-		for (const c of this.clients.values()) {
-			if (c.getSpecies() !== null) continue;
+				for (let j = 0; j < inputs.length; j++) {
+					const input = inputs[j];
+					const output = outputs[j];
+					const result = c.calculate(...input);
 
-			let found = false;
-			for (const s of this.species.values()) {
-				if (s.put(c)) {
-					found = true;
-					break;
+					mae +=
+						result.reduce((sum, r, index) => {
+							r = r === 0 ? 1 : r;
+							return sum + output[index] / r;
+						}, 0) / result.length;
 				}
+
+				c.score = 1 - mae / inputs.length;
 			}
-			if (!found) {
-				this.species.add(new Species(c));
-			}
-		}
 
-		for (const s of this.species.values()) {
-			s.evaluateScore();
+			this.evolve();
+			this.printSpeacies();
 		}
 	}
 
-	/**
-	 * Eliminate weak individuals in each species based on the survival rate.
-	 */
-	private kill(): void {
-		for (const s of this.species.values()) {
-			s.kill(1 - this.SURVIVORS);
-		}
+	get C1(): number {
+		return this.coefficients.c1;
 	}
 
-	/**
-	 * Main method to run the NEAT algorithm.
-	 */
-	public static main(): void {
-		const neat: Neat = new Neat(10, 1, 1000);
-
-		const inValues: number[] = new Array(10).fill(0).map(() => Math.random());
-
-		for (let i = 0; i < 100; i++) {
-			for (const c of neat.clients.values()) {
-				const score: number = c.calculate(...inValues)[0];
-				c.setScore(score);
-			}
-			neat.evolve();
-			//neat.printSpecies();
-		}
-
-		// for (const c of neat.clients.values()) {
-		// 	for (const g of c.getGenome().getConnections().getData()) {
-		// 		console.log(g.getInnovation_number(), g.toString());
-		// 	}
-		// }
-
-		console.log(neat.all_nodes.values());
+	get C2(): number {
+		return this.coefficients.c2;
 	}
 
-	public getOutput_size(): number {
-		return this.output_size;
+	get C3(): number {
+		return this.coefficients.c3;
 	}
 
-	public getInput_size(): number {
-		return this.input_size;
+	get clients(): RandomHashSet<Client> {
+		return this._clients;
 	}
 }

@@ -6,16 +6,23 @@ import Gene from "../genome/Gene";
  */
 export default class RandomHashSet<T> {
 	/**
+	 * @type {Set<T>}
+	 * @description O conjunto que armazena os elementos únicos.
+	 */
+	set: Set<T>;
+
+	/**
 	 * @type {Array<T>}
 	 * @description A matriz que mantém a ordem dos elementos para seleção aleatória.
 	 */
-	private _data: Array<T>;
+	data: Array<T>;
 
 	/**
 	 * @description Construtor para inicializar o conjunto e a matriz.
 	 */
 	constructor() {
-		this._data = [];
+		this.set = new Set();
+		this.data = [];
 	}
 
 	/**
@@ -24,7 +31,7 @@ export default class RandomHashSet<T> {
 	 * @description Verifica se o conjunto contém um determinado elemento.
 	 */
 	contains(object: T): boolean {
-		return this._data.indexOf(object) >= 0;
+		return this.set.has(object);
 	}
 
 	/**
@@ -32,8 +39,8 @@ export default class RandomHashSet<T> {
 	 * @description Retorna um elemento aleatório do conjunto, ou `null` se o conjunto estiver vazio.
 	 */
 	random_element(): T | null {
-		if (this._data.length > 0) {
-			return this._data[Math.floor(Math.random() * this.size)];
+		if (this.set.size > 0) {
+			return this.data[Math.floor(Math.random() * this.size)];
 		}
 		return null;
 	}
@@ -43,7 +50,7 @@ export default class RandomHashSet<T> {
 	 * @description Retorna o número de elementos no conjunto.
 	 */
 	get size(): number {
-		return this._data.length;
+		return this.data.length;
 	}
 
 	/**
@@ -51,8 +58,9 @@ export default class RandomHashSet<T> {
 	 * @description Adiciona um elemento ao conjunto, se ainda não estiver presente.
 	 */
 	add(object: T): void {
-		if (!this.contains(object)) {
-			this._data.push(object);
+		if (!this.set.has(object)) {
+			this.set.add(object);
+			this.data.push(object);
 		}
 	}
 
@@ -61,25 +69,26 @@ export default class RandomHashSet<T> {
 	 * @description Adiciona um elemento ao conjunto mantendo a ordem com base em uma propriedade específica (para objetos Gene).
 	 */
 	add_sorted(object: T): void {
-		if (object instanceof Gene) {
-			for (let i = 0; i < this.size; i++) {
-				if (this._data[i] instanceof Gene) {
-					const innovation = (this._data[i] as Gene).innovation;
-					if (object.innovation < innovation) {
-						this._data.splice(i, 0, object);
-						return;
-					}
+		for (let i = 0; i < this.size; i++) {
+			if (object instanceof Gene && this.data[i] instanceof Gene) {
+				const innovation = (this.data[i] as Gene).getInnovation_number();
+				if (object.getInnovation_number() < innovation) {
+					this.data.splice(i, 0, object);
+					this.set.add(object);
+					return;
 				}
 			}
 		}
-		this._data.push(object);
+		this.data.push(object);
+		this.set.add(object);
 	}
 
 	/**
 	 * @description Limpa o conjunto, removendo todos os elementos.
 	 */
 	clear(): void {
-		this._data = [];
+		this.set.clear();
+		this.data = [];
 	}
 
 	/**
@@ -88,7 +97,7 @@ export default class RandomHashSet<T> {
 	 */
 	get(index: number): T | null {
 		if (index < 0 || index >= this.size) return null;
-		return this._data[index];
+		return this.data[index];
 	}
 
 	/**
@@ -98,9 +107,11 @@ export default class RandomHashSet<T> {
 	remove(index: number | T): void {
 		if (typeof index === "number") {
 			if (index < 0 || index >= this.size) return;
-			this._data.splice(index, 1);
+			this.set.delete(this.data[index]);
+			this.data.splice(index, 1);
 		} else {
-			this._data = this._data.filter((item) => item !== index);
+			this.set.delete(index);
+			this.data = this.data.filter((item) => item !== index);
 		}
 	}
 
@@ -109,10 +120,6 @@ export default class RandomHashSet<T> {
 	 * @description Retorna a matriz de dados (data).
 	 */
 	getData(): Array<T> {
-		return this._data;
-	}
-
-	get data(): Array<T> {
-		return this._data;
+		return this.data;
 	}
 }

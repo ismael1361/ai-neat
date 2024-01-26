@@ -65,10 +65,14 @@
 		"ignore": [],
 		"watch": [
 			"src",
-			"test"
+			"test",
+			"demo"
 		],
 		"delay": 2500,
 		"exec": "node --loader ts-node/esm",
 		"ext": "js,ts"
+	},
+	"dependencies": {
+		"canvas": "^2.11.2"
 	}
 }
