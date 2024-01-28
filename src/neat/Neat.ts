@@ -249,28 +249,22 @@ export default class Neat {
 			learning_rate: number;
 			max_iterations: number;
 			tolerance: number;
-			error_check_amount: number;
-			maximum_error_check: number;
+			max_check_amount: number;
+			max_check: number;
 			mutation_per_cycle: number;
 			probability_mutate: number;
 		}> = {},
-		resolve: ((response: { error: number; count: number }) => void) | undefined = undefined,
+		resolve: ((response: { error: number; accuracy: number; count: number }) => void) | undefined = undefined,
 	): void {
 		const g = typeof client === "number" ? this.getClient(client)?.genome : client instanceof Genome ? client : undefined;
 		if (!g) return;
 
-		const {
-			learning_rate = 0.1,
-			max_iterations = 5000000,
-			tolerance = 0.2,
-			error_check_amount = inputs.length * 5,
-			maximum_error_check = 3,
-			mutation_per_cycle = 50000,
-			probability_mutate = 0.2,
-		} = option;
+		const { learning_rate, max_iterations = 5000000, tolerance = 0.2, max_check_amount = inputs.length * 5, max_check = 3, mutation_per_cycle = 100000, probability_mutate = 0.2 } = option;
 
-		let error = new Array<number>(maximum_error_check).fill(1),
+		let error = new Array<number>(max_check).fill(1),
+			accuracy = new Array<number>(max_check).fill(0),
 			current_error = 0,
+			current_accuracy = 0,
 			count = 0;
 
 		while (error.reduce((c, e) => c + e, 0) / error.length > tolerance && count < max_iterations) {
@@ -278,23 +272,31 @@ export default class Neat {
 			const index = Math.floor(Math.random() * inputs.length);
 			const input = inputs[index];
 			const output = outputs[index];
-			g.backpropagation(input, output);
-			if (count % error_check_amount === 0 && count > 0) {
-				error.unshift(Math.abs(current_error / error_check_amount));
-				error = error.slice(0, maximum_error_check);
+			const learning_rate_dinamic = typeof learning_rate === "number" ? learning_rate : error.reduce((c, e) => c + e, 0) / error.length;
+			g.backpropagation(input, output, learning_rate_dinamic);
+			if (count % max_check_amount === 0 && count > 0) {
+				error.unshift(Math.abs(current_error / max_check_amount));
+				error = error.slice(0, max_check);
 				current_error = 0;
+				accuracy.unshift(Math.abs(current_accuracy / max_check_amount));
+				accuracy = accuracy.slice(0, max_check);
+				current_accuracy = 0;
 			}
 			if (count % mutation_per_cycle === 0 && count > 0 && Math.random() < probability_mutate) {
 				g.mutate(false, false);
 				g.generateCalculator();
 			}
 			current_error += Math.abs(g.calculateError(input, output).reduce((sum, e) => sum + e, 0) / output.length) ?? 1;
+			const predictedOutputs = g.calculate(...input);
+			const correctOutputs = output.map((expected, i) => Math.abs(predictedOutputs[i] - expected) < tolerance);
+			current_accuracy += correctOutputs.filter((correct) => correct).length / correctOutputs.length;
 			count++;
 		}
 
 		if (typeof resolve === "function") {
 			resolve({
 				error: error.reduce((c, e) => c + e, 0) / error.length,
+				accuracy: accuracy.reduce((c, e) => c + e, 0) / accuracy.length,
 				count,
 			});
 		}

@@ -2,7 +2,7 @@ import { createCanvas, loadImage } from "canvas";
 import fs from "fs";
 import { Neat } from "../src/neat";
 
-const neat = new Neat(2, 1, 1000, "rational_sigmoid");
+const neat = new Neat(2, 1, 1000, "sigmoid");
 
 let g = neat.empty_genome();
 
@@ -40,14 +40,13 @@ neat.train(
 	train_input_data,
 	train_output_data,
 	{
-		learning_rate: 0.1,
-		max_iterations: Infinity,
-		tolerance: 0.15,
+		max_iterations: 1500000,
+		tolerance: 0.1,
 		probability_mutate: 0.2,
-		maximum_error_check: 5,
+		max_check: 5,
 	},
-	({ error, count }) => {
-		console.log(error, count);
+	({ error, accuracy, count }) => {
+		console.log(error, accuracy, count);
 	},
 );
 
