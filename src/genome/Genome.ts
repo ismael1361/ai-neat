@@ -142,20 +142,32 @@ export default class Genome {
 		return this._calculator.calculate(...inputs);
 	}
 
-	mutate(): void {
-		if (Math.random() < this.neat.PROBABILITY_MUTATE_LINK) {
+	calculateError(input: number[], target: number[]): number[] {
+		return this._calculator.calculateError(input, target);
+	}
+
+	backpropagation(input: number[], target: number[], learningRate: number = 0.1): void {
+		this._calculator.calculateError(input, target, true, learningRate);
+		for (const con of this._connections.getData()) {
+			con.weight = this._calculator.getWeightBy(con);
+		}
+		//this.generateCalculator();
+	}
+
+	mutate(random: boolean = true, random_link_toggle: boolean = true): void {
+		if (!random || Math.random() < this.neat.PROBABILITY_MUTATE_LINK) {
 			this.mutate_link();
 		}
-		if (Math.random() < this.neat.PROBABILITY_MUTATE_NODE) {
+		if (!random || Math.random() < this.neat.PROBABILITY_MUTATE_NODE) {
 			this.mutate_node();
 		}
-		if (Math.random() < this.neat.PROBABILITY_MUTATE_WEIGHT_SHIFT) {
+		if (!random || Math.random() < this.neat.PROBABILITY_MUTATE_WEIGHT_SHIFT) {
 			this.mutate_weight_shift();
 		}
-		if (Math.random() < this.neat.PROBABILITY_MUTATE_WEIGHT_RANDOM) {
+		if (!random || Math.random() < this.neat.PROBABILITY_MUTATE_WEIGHT_RANDOM) {
 			this.mutate_weight_random();
 		}
-		if (Math.random() < this.neat.PROBABILITY_MUTATE_TOGGLE_LINK) {
+		if (!random_link_toggle || Math.random() < this.neat.PROBABILITY_MUTATE_TOGGLE_LINK) {
 			this.mutate_link_toggle();
 		}
 
@@ -165,10 +177,10 @@ export default class Genome {
 	}
 
 	mutate_link(): void {
-		const n1: NodeGene | null = this.nodes.random_element();
+		const n1: NodeGene | null = this._nodes.random_element();
 
 		for (let i = 0; i < 100; i++) {
-			const n2: NodeGene | null = this.nodes.random_element();
+			const n2: NodeGene | null = this._nodes.random_element();
 
 			if (n1 !== null && n2 !== null && n1 !== n2) {
 				if (n1.x === n2.x) {
@@ -205,7 +217,7 @@ export default class Genome {
 		const con1 = this.neat.getConnection(from, middle);
 		const con2 = this.neat.getConnection(middle, to);
 
-		con1.weight = 1;
+		con1.weight = Math.random() * 2 - 1;
 		con2.weight = c.weight;
 		con2.isEnabled = c.isEnabled;
 

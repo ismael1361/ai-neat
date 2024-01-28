@@ -22,6 +22,18 @@ export default class Client {
 		return this._calculator.calculate(...inputs);
 	}
 
+	calculateError(input: number[], target: number[]): number[] {
+		return this._calculator.calculateError(input, target);
+	}
+
+	backpropagation(input: number[], target: number[]): void {
+		this._calculator.calculateError(input, target);
+		for (const con of this._genome.connections.getData()) {
+			con.weight = this._calculator.getWeightBy(con);
+		}
+		this.generateCalculator();
+	}
+
 	distance(other: Client): number {
 		return this._genome.distance(other._genome);
 	}

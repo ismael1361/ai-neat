@@ -1,3 +1,4 @@
+import { ActivationFunction } from "../calculations/Node";
 import { RandomHashSet, RandomSelector } from "../data_structures";
 import { ConnectionGene, Genome, NodeGene } from "../genome";
 import Client from "./Client";
@@ -18,11 +19,11 @@ export default class Neat {
 
 	public SURVIVORS: number = 0.4;
 
-	public PROBABILITY_MUTATE_LINK: number = 0.01;
-	public PROBABILITY_MUTATE_NODE: number = 0.01;
-	public PROBABILITY_MUTATE_WEIGHT_SHIFT: number = 0.2;
-	public PROBABILITY_MUTATE_WEIGHT_RANDOM: number = 0.02;
-	public PROBABILITY_MUTATE_TOGGLE_LINK: number = 0.1;
+	public PROBABILITY_MUTATE_LINK: number = 0.05;
+	public PROBABILITY_MUTATE_NODE: number = 0.05;
+	public PROBABILITY_MUTATE_WEIGHT_SHIFT: number = 0.01;
+	public PROBABILITY_MUTATE_WEIGHT_RANDOM: number = 0.01;
+	public PROBABILITY_MUTATE_TOGGLE_LINK: number = 0;
 
 	public coefficients: {
 		c1: number;
@@ -34,40 +35,54 @@ export default class Neat {
 		c3: 1,
 	};
 
-	public CP: number = 20;
+	public CP: number = 4;
+
+	public TYPE_ACTIVATION_FUNCTION: ActivationFunction = "sigmoid";
 
 	private _clients: RandomHashSet<Client> = new RandomHashSet<Client>();
 	private _species: RandomHashSet<Species> = new RandomHashSet<Species>();
 
-	constructor(input_size: number, output_size: number, population_size: number = 100) {
+	constructor(input_size: number, output_size: number, population_size: number = 100, type_activation_function: ActivationFunction = "sigmoid") {
 		this.input_size = input_size;
 		this.output_size = output_size;
 		this.max_population_size = population_size;
+		this.TYPE_ACTIVATION_FUNCTION = type_activation_function;
 		this.reset(input_size, output_size, population_size);
 	}
 
 	empty_genome(): Genome {
 		const g: Genome = new Genome(this);
-		for (let i = 0; i < this.input_size + this.output_size; i++) {
+		for (let i = 0; i <= this.input_size; i++) {
 			const n = this.getNode(i + 1);
 			g.nodes.add(n);
+		}
+		for (let i = this.input_size + 1; i <= this.input_size + this.output_size; i++) {
+			const n = this.getNode(i + 1);
+			g.nodes.add(n);
+			for (let i = 0; i <= this.input_size; i++) {
+				const from = this.getNode(i + 1);
+				const c = this.getConnection(from, n);
+				c.weight = Math.random() * 2 - 1;
+				g.connections.add(c);
+			}
 		}
 		return g;
 	}
 
-	reset(input_size: number, output_size: number, population_size: number = 100): void {
+	reset(input_size: number, output_size: number, population_size: number = 1): void {
 		this.input_size = input_size;
 		this.output_size = output_size;
-		this.max_population_size = population_size;
+		this.max_population_size = population_size = Math.max(1, population_size);
 
 		this.all_connections.clear();
 		this.all_nodes.clear();
 		this._clients.clear();
 
-		for (let i = 0; i < input_size; i++) {
+		for (let i = 0; i <= input_size; i++) {
 			const n = this.getNode();
 			n.x = 0.1;
-			n.y = (i + 1) / (input_size + 1);
+			n.y = (i + 1) / (input_size + 2);
+			n.isBias = i >= input_size;
 		}
 
 		for (let i = 0; i < output_size; i++) {
@@ -85,7 +100,7 @@ export default class Neat {
 	}
 
 	getClient(index?: number): Client | null {
-		return typeof index === "number" ? this._clients.get(index) : this._clients.data.sort((a, b) => b.score - a.score)[0];
+		return typeof index === "number" ? this._clients.get(index - 1) : this._clients.data.sort((a, b) => a.score - b.score)[0];
 	}
 
 	static getConnection(con: ConnectionGene) {
@@ -226,29 +241,84 @@ export default class Neat {
 		}
 	}
 
-	train(inputs: number[][], outputs: number[][], iterations: number = 100): void {
-		for (let i = 0; i < iterations; i++) {
-			for (let c of this._clients.getData()) {
-				let mae = 0;
+	train(
+		client: number | Genome = 1,
+		inputs: number[][],
+		outputs: number[][],
+		option: Partial<{
+			learning_rate: number;
+			max_iterations: number;
+			tolerance: number;
+			error_check_amount: number;
+			maximum_error_check: number;
+			mutation_per_cycle: number;
+			probability_mutate: number;
+		}> = {},
+		resolve: ((response: { error: number; count: number }) => void) | undefined = undefined,
+	): void {
+		const g = typeof client === "number" ? this.getClient(client)?.genome : client instanceof Genome ? client : undefined;
+		if (!g) return;
 
-				for (let j = 0; j < inputs.length; j++) {
-					const input = inputs[j];
-					const output = outputs[j];
-					const result = c.calculate(...input);
+		const {
+			learning_rate = 0.1,
+			max_iterations = 5000000,
+			tolerance = 0.2,
+			error_check_amount = inputs.length * 5,
+			maximum_error_check = 3,
+			mutation_per_cycle = 50000,
+			probability_mutate = 0.2,
+		} = option;
 
-					mae +=
-						result.reduce((sum, r, index) => {
-							r = r === 0 ? 1 : r;
-							return sum + output[index] / r;
-						}, 0) / result.length;
-				}
+		let error = new Array<number>(maximum_error_check).fill(1),
+			current_error = 0,
+			count = 0;
 
-				c.score = 1 - mae / inputs.length;
+		while (error.reduce((c, e) => c + e, 0) / error.length > tolerance && count < max_iterations) {
+			//const index = count % train_input_data.length;
+			const index = Math.floor(Math.random() * inputs.length);
+			const input = inputs[index];
+			const output = outputs[index];
+			g.backpropagation(input, output);
+			if (count % error_check_amount === 0 && count > 0) {
+				error.unshift(Math.abs(current_error / error_check_amount));
+				error = error.slice(0, maximum_error_check);
+				current_error = 0;
 			}
-
-			this.evolve();
-			this.printSpeacies();
+			if (count % mutation_per_cycle === 0 && count > 0 && Math.random() < probability_mutate) {
+				g.mutate(false, false);
+				g.generateCalculator();
+			}
+			current_error += Math.abs(g.calculateError(input, output).reduce((sum, e) => sum + e, 0) / output.length) ?? 1;
+			count++;
 		}
+
+		if (typeof resolve === "function") {
+			resolve({
+				error: error.reduce((c, e) => c + e, 0) / error.length,
+				count,
+			});
+		}
+
+		// for (let i = 0; i < max_iterations; i++) {
+		// 	for (let c of this._clients.getData()) {
+		// 		let min_hit = 0;
+
+		// 		for (let j = 0; j < inputs.length; j++) {
+		// 			const input = inputs[j];
+		// 			const output = outputs[j];
+		// 			for (let k = 0; k < 5; k++) {
+		// 				c.backpropagation(input, output);
+		// 			}
+		// 			const mae = c.calculateError(input, output).reduce((sum, e) => sum + e, 0) / output.length;
+		// 			min_hit = Math.abs(j === 0 ? mae : Math.min(min_hit, mae));
+		// 		}
+
+		// 		c.score += min_hit > 0.2 ? -1 : 1;
+		// 	}
+
+		// 	//this.evolve();
+		// 	//this.printSpeacies();
+		// }
 	}
 
 	get C1(): number {

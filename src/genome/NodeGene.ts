@@ -6,6 +6,8 @@ export default class NodeGene extends Gene {
 		y: number;
 	};
 
+	private _isBias: boolean = false;
+
 	constructor(innovation_number: number, x: number, y: number) {
 		super(innovation_number);
 		this.pos = {
@@ -28,6 +30,14 @@ export default class NodeGene extends Gene {
 
 	set y(y: number) {
 		this.pos.y = y;
+	}
+
+	get isBias(): boolean {
+		return this._isBias;
+	}
+
+	set isBias(isBias: boolean) {
+		this._isBias = isBias;
 	}
 
 	equals(other: Object): other is this {
